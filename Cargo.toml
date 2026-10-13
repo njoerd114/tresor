@@ -79,7 +79,7 @@ empty_enums = "warn"      # public enums should consider #[non_exhaustive]
 # tui-textarea 0.7 (the last published version) requires them; mixing in
 # ratatui 0.30 would silently break widget type compatibility.
 ratatui = "0.29"
-crossterm = { version = "0.28", features = ["event-stream"] }
+crossterm = { version = "0.29", features = ["event-stream"] }
 tokio = { version = "1", features = ["full"] }
 vaultrs = "0.8"
 tui-textarea = "0.7"
