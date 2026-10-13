@@ -1,6 +1,6 @@
 [package]
 name = "tresor"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 description = "A k9s-style terminal UI for HashiCorp Vault and OpenBao (Rust rewrite of the Go vaultview)"
