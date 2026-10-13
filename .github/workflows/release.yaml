@@ -65,7 +65,7 @@ jobs:
       # Linux binaries are reused to build distro packages in the next job.
       - name: Upload linux binary for packaging
         if: ${{ contains(matrix.target, 'linux') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-${{ matrix.target }}
           path: tresor-${{ matrix.target }}
