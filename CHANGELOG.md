@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.0](https://github.com/njoerd114/tresor/compare/v0.3.0...v0.4.0) (2026-10-14)
+
+
+### Features
+
+* acl policy browsing with external editor handoff ([#27](https://github.com/njoerd114/tresor/issues/27)) ([fe36f9b](https://github.com/njoerd114/tresor/commit/fe36f9b382f8e3568d3ca622ec5b0c396747f8b3))
+* add contexts/profiles (:ctx) and fuzzy filter (/) ([#29](https://github.com/njoerd114/tresor/issues/29)) ([f795663](https://github.com/njoerd114/tresor/commit/f79566300cdb2c8a30e6a31bf9e7a6fa49389fd4))
+* **token:** add token inspector with renew-self, child tokens, and wrapping ([#28](https://github.com/njoerd114/tresor/issues/28)) ([e2b024c](https://github.com/njoerd114/tresor/commit/e2b024cf6264a63d71244298f887c42ae2c7e805))
+
+
+### Bug Fixes
+
+* **deps:** update rust crate base64 to 0.23 ([#37](https://github.com/njoerd114/tresor/issues/37)) ([7f81099](https://github.com/njoerd114/tresor/commit/7f81099a5b541f73787d2f30f70924d0517e158a))
+
+
+### Build
+
+* **deps:** bump actions/checkout from 4 to 7 ([#35](https://github.com/njoerd114/tresor/issues/35)) ([4e8f3ce](https://github.com/njoerd114/tresor/commit/4e8f3cec47a92450cce2e94a3ccf71308f80b259))
+* **deps:** bump actions/download-artifact from 4 to 8 ([#32](https://github.com/njoerd114/tresor/issues/32)) ([b2e09a1](https://github.com/njoerd114/tresor/commit/b2e09a10c50e1269a94b8521dfbe2393fddb3cf5))
+* **deps:** bump actions/upload-artifact from 4 to 7 ([#33](https://github.com/njoerd114/tresor/issues/33)) ([adb1613](https://github.com/njoerd114/tresor/commit/adb1613d27e45ab0967053b2d55221b4249a497f))
+* **deps:** bump amannn/action-semantic-pull-request from 5 to 6 ([#34](https://github.com/njoerd114/tresor/issues/34)) ([27b428e](https://github.com/njoerd114/tresor/commit/27b428e935fc8fe950b062f82ab76942e5920be6))
+* **deps:** bump googleapis/release-please-action from 4 to 5 ([#31](https://github.com/njoerd114/tresor/issues/31)) ([3e5ee3f](https://github.com/njoerd114/tresor/commit/3e5ee3f3f98e6f3703afbfc08f741843bcbf8243))
+* **deps:** bump toml from 0.9.12+spec-1.1.0 to 1.1.8+spec-1.1.0 ([#26](https://github.com/njoerd114/tresor/issues/26)) ([933b0b8](https://github.com/njoerd114/tresor/commit/933b0b803b88cc77b7cf246842377fe4ed41343e))
+
 ## [0.3.0](https://github.com/njoerd114/tresor/compare/v0.2.0...v0.3.0) (2026-10-13)
 
 
