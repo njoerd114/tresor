@@ -8,8 +8,8 @@ class Tresor < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/njoerd114/tresor/archive/refs/tags/v0.4.1.tar.gz"
-      sha256 "892f282fefb9f45c2f83210d803c1c4f63b7369ba567994f23df6f7757ad6b12"
+      url "https://github.com/njoerd114/tresor/archive/refs/tags/v0.5.0.tar.gz"
+      sha256 "8c8d628b899e8e79238ba060416d86f5eba0d88913ee9fe81b3cc0ea247a6163"
     end
     on_intel do
       url "https://github.com/njoerd114/tresor/releases/download/v0.4.0/tresor-x86_64-apple-darwin.tar.gz"
