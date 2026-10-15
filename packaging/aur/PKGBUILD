@@ -6,7 +6,7 @@
 # Publish (AUR maintainer):
 #   git clone ssh://aur@aur.archlinux.org/tresor.git && cp PKGBUILD && makepkg --printsrcinfo > .SRCINFO
 pkgname=tresor
-pkgver=0.5.0
+pkgver=0.5.1
 pkgrel=1
 pkgdesc="A k9s-style terminal UI for HashiCorp Vault and OpenBao"
 arch=('x86_64' 'aarch64')
