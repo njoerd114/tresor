@@ -11,7 +11,8 @@ name: release-please
 # Distribution channels release-please cannot maintain (it only bumps the crate
 # version + CHANGELOG) are synced by the `sync-manifests` job below: the Homebrew
 # formula (Formula/tresor.rb, consumed via `brew tap njoerd114/tresor <repo-url>`)
-# plus the scoop manifest and AUR PKGBUILD.
+# plus the scoop manifest and AUR PKGBUILD. It lands via an auto-merged PR, because
+# `main` is protected by a ruleset that rejects direct pushes.
 on:
   push:
     branches: [main]
@@ -157,14 +158,41 @@ jobs:
           set -euo pipefail
           scripts/sync-packaging.sh "$VERSION" "$TAG"
 
-      - name: Commit to main
+      - name: Open and merge a sync PR
+        # `main` is protected by a repository ruleset (pull_request + signed commits,
+        # no bypass actors), so a direct `git push` is rejected with
+        # "push declined due to repository rule violations". Open a PR instead and
+        # squash-merge it through the API — GitHub signs the resulting commit, which
+        # satisfies the ruleset.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release.outputs.tag_name }}
         run: |
           set -euo pipefail
           if git diff --quiet; then
             echo "manifests already current"
             exit 0
           fi
+
+          branch="chore/packaging-sync-${TAG}"
+          title="chore(packaging): sync Homebrew + scoop + AUR for ${TAG}"
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore(packaging): sync Homebrew + scoop + AUR for ${{ needs.release.outputs.tag_name }} [skip ci]"
-          git push
+          git checkout -b "$branch"
+          git commit -am "$title"
+          git push -u origin "$branch"
+
+          gh pr create --base main --head "$branch" --title "$title" --body \
+            "Automated: regenerated \`Formula/tresor.rb\`, \`packaging/scoop/tresor.json\` and \`packaging/aur/PKGBUILD\` from the ${TAG} release assets (version + sha256). Produced by the \`sync-manifests\` job; opened as a PR because \`main\` requires pull requests."
+
+          # GitHub computes mergeability asynchronously; retry until the PR is mergeable.
+          for attempt in $(seq 1 12); do
+            if gh pr merge "$branch" --squash --delete-branch; then
+              exit 0
+            fi
+            echo "merge attempt ${attempt} failed; retrying in 10s" >&2
+            sleep 10
+          done
+          echo "error: could not merge ${branch}" >&2
+          exit 1
