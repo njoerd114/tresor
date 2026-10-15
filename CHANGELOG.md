@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/njoerd114/tresor/compare/v0.4.0...v0.4.1) (2026-10-15)
+
+
+### Build
+
+* **deps:** bump softprops/action-gh-release from 2 to 3 ([#40](https://github.com/njoerd114/tresor/issues/40)) ([349a342](https://github.com/njoerd114/tresor/commit/349a342f98c722d0a64b3d2aaeecc14f77d1c4f5))
+* **packaging:** auto-sync Homebrew formula, scoop and AUR pins ([#41](https://github.com/njoerd114/tresor/issues/41)) ([45374a3](https://github.com/njoerd114/tresor/commit/45374a32fa66b25301d5b125692c12b852fc3781))
+
 ## [0.4.0](https://github.com/njoerd114/tresor/compare/v0.3.0...v0.4.0) (2026-10-14)
 
 
