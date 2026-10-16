@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 use secrecy::ExposeSecret as _;
 use serde_json::{Value, json};
 use tresor::model::{
-    HealthInfo, MintedToken, PolicyDocument, PolicyEntry, SecretEntry, TokenCreateRequest,
-    WrappedToken,
+    EngineInfo, HealthInfo, MintedToken, PolicyDocument, PolicyEntry, SecretEntry,
+    TokenCreateRequest, WrappedToken,
 };
 use tresor::path::SecretPath;
 use tresor::vault::{VaultApi as _, VaultClient, VaultError};
@@ -31,8 +31,8 @@ fn vault_header() -> impl wiremock::Match {
 fn mount_response(mount_type: &str, version: Option<&str>) -> Value {
     json!({
         "accessor": format!("{mount_type}_accessor"),
-        "config": {"default_lease_ttl": 0, "force_no_cache": false, "max_lease_ttl": 0},
-        "description": "",
+        "config": {"default_lease_ttl": 3600, "force_no_cache": false, "max_lease_ttl": 7200},
+        "description": format!("{mount_type} mount"),
         "external_entropy_access": false,
         "local": false,
         "options": version.map(|v| json!({"version": v})),
@@ -43,14 +43,16 @@ fn mount_response(mount_type: &str, version: Option<&str>) -> Value {
 }
 
 #[tokio::test]
-async fn read_secret_engines_when_mounts_exist_returns_slashes_stripped() {
-    // Given: Vault exposes two mounted engines and requires the client token header.
+async fn read_secret_engines_when_mounts_exist_returns_type_and_metadata() {
+    // Given: Vault exposes a KV2 mount, a non-KV mount, and the shape
+    // `vault secrets enable kv` produces (type `kv`, `options: null` = KV1).
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/sys/mounts"))
         .and(vault_header())
         .respond_with(ResponseTemplate::new(200).set_body_json(vault_data(json!({
             "secret/": mount_response("kv", Some("2")),
+            "legacy/": mount_response("kv", None),
             "cubbyhole/": mount_response("cubbyhole", None)
         }))))
         .mount(&server)
@@ -63,11 +65,39 @@ async fn read_secret_engines_when_mounts_exist_returns_slashes_stripped() {
         .await
         .expect("mounts should parse");
 
-    // Then: every mount key is returned as a leaf entry without its trailing slash.
+    // Then: each mount keeps its type/version/TTL metadata, sorted by name with the
+    // trailing slash stripped from the mount path.
+    assert_eq!(engines.len(), 3);
+
+    let cubbyhole = engines.first().expect("cubbyhole engine");
+    assert_eq!(cubbyhole.name, SecretPath::new("cubbyhole"));
+    assert_eq!(cubbyhole.mount_type, "cubbyhole");
+    assert_eq!(cubbyhole.kv_version, None);
+    assert!(!cubbyhole.supports_browsing());
+    assert_eq!(cubbyhole.type_label(), "cubbyhole");
+
+    let legacy = engines.get(1).expect("legacy engine");
+    assert_eq!(legacy.name, SecretPath::new("legacy"));
+    assert_eq!(legacy.kv_version, None);
+    assert!(legacy.is_kv1());
+    assert!(!legacy.supports_browsing());
+    assert_eq!(legacy.type_label(), "kv v1");
+
+    let secret = engines.get(2).expect("secret engine");
     assert_eq!(
-        engines,
-        vec![SecretEntry::leaf("cubbyhole"), SecretEntry::leaf("secret")]
+        *secret,
+        EngineInfo {
+            name: SecretPath::new("secret"),
+            mount_type: "kv".to_owned(),
+            kv_version: Some(2),
+            accessor: "kv_accessor".to_owned(),
+            description: "kv mount".to_owned(),
+            default_lease_ttl: 3600,
+            max_lease_ttl: 7200,
+        }
     );
+    assert!(secret.supports_browsing());
+    assert_eq!(secret.type_label(), "kv v2");
 }
 
 #[tokio::test]

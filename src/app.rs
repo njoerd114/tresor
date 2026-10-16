@@ -18,8 +18,8 @@ use crate::constants::{NA_VALUE, STATUS_EXPIRY_SECS, keys};
 use crate::editor::{EditBuffer, EditOutcome, EditorError};
 use crate::fuzzy;
 use crate::model::{
-    HealthInfo, KvData, MintedToken, SecretEntry, TokenCreateRequest, TokenInfo, VersionMeta,
-    WrappedToken,
+    EngineInfo, HealthInfo, KvData, MintedToken, SecretEntry, TokenCreateRequest, TokenInfo,
+    VersionMeta, WrappedToken,
 };
 use crate::path::SecretPath;
 use crate::profiles::{ConnectRequest, Profile, Profiles};
@@ -972,6 +972,21 @@ impl<V: VaultApi + 'static> App<V> {
             .collect()
     }
 
+    /// Applies the active presentation filter to the mounted-engine list.
+    fn filter_engines(&self, entries: &[EngineInfo]) -> Vec<EngineInfo> {
+        let Some(filter) = &self.filter else {
+            return entries.to_vec();
+        };
+        if filter.scope != FilterScope::Engines || filter.query.is_empty() {
+            return entries.to_vec();
+        }
+        let labels: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        fuzzy::ranked_indices(&labels, &filter.query)
+            .into_iter()
+            .filter_map(|index| entries.get(index).cloned())
+            .collect()
+    }
+
     fn filtered_data_keys(&self) -> Vec<String> {
         let Some(ui) = self.secret_data.as_ref() else {
             return Vec::new();
@@ -1455,7 +1470,7 @@ impl<V: VaultApi + 'static> App<V> {
     /// Builds the pure engines render model.
     pub fn engines_model(&self) -> EnginesModel {
         EnginesModel {
-            engines: self.filter_entries(&FilterScope::Engines, self.store.engines()),
+            engines: self.filter_engines(self.store.engines()),
             selected: self.engines_selected,
         }
     }
@@ -2321,10 +2336,19 @@ impl<V: VaultApi + 'static> App<V> {
     }
 
     fn open_selected_engine(&mut self) {
-        let Some(entry) = self.store.engines().get(self.engines_selected).cloned() else {
+        // Read from the render model so the engine that Enter opens always
+        // matches the highlighted row when a `/` filter is active.
+        let engines = self.engines_model().engines;
+        let Some(engine) = engines.get(self.engines_selected).cloned() else {
             return;
         };
-        self.secrets_engine = entry.name;
+        // Only KV2 mounts can be browsed; entering e.g. `sys` or `cubbyhole`
+        // would otherwise fail with a confusing "path '' does not exist".
+        if let Some(reason) = engine.unsupported_reason() {
+            self.set_status(StatusKind::Warn, reason);
+            return;
+        }
+        self.secrets_engine = engine.name;
         self.secrets_path = SecretPath::root();
         self.secrets_selected = 0;
         self.state = AppState::Main(Mode::Secrets);
@@ -3839,12 +3863,36 @@ mod tests {
 
     use super::*;
     use crate::clipboard::ClipboardError;
-    use crate::model::{KvMetadata, KvVersionHistory, PolicyDocument, PolicyEntry, VersionMeta};
+    use crate::model::{
+        EngineInfo, KvMetadata, KvVersionHistory, PolicyDocument, PolicyEntry, VersionMeta,
+    };
     use crate::vault::VaultApi;
+
+    /// A KV2 engine as the fake vault reports it.
+    fn engine(name: &str) -> EngineInfo {
+        EngineInfo {
+            name: SecretPath::new(name),
+            mount_type: "kv".to_owned(),
+            kv_version: Some(2),
+            accessor: String::new(),
+            description: String::new(),
+            default_lease_ttl: 0,
+            max_lease_ttl: 0,
+        }
+    }
+
+    /// An engine of an arbitrary type and KV version.
+    fn engine_typed(name: &str, mount_type: &str, kv_version: Option<u64>) -> EngineInfo {
+        EngineInfo {
+            mount_type: mount_type.to_owned(),
+            kv_version,
+            ..engine(name)
+        }
+    }
 
     #[derive(Debug)]
     struct FakeVault {
-        engines: Vec<SecretEntry>,
+        engines: Vec<EngineInfo>,
         policies: Vec<PolicyEntry>,
         listings: Mutex<HashMap<(SecretPath, SecretPath), Vec<SecretEntry>>>,
         data: Mutex<HashMap<(SecretPath, SecretPath), KvData>>,
@@ -3888,7 +3936,7 @@ mod tests {
     impl FakeVault {
         fn seeded() -> Arc<Self> {
             let vault = Arc::new(Self {
-                engines: vec![SecretEntry::leaf("secret")],
+                engines: vec![engine("secret")],
                 policies: vec![
                     PolicyEntry {
                         name: "default".to_owned(),
@@ -4024,7 +4072,7 @@ mod tests {
     impl VaultApi for FakeVault {
         fn read_secret_engines(
             &self,
-        ) -> impl Future<Output = Result<Vec<SecretEntry>, VaultError>> + Send {
+        ) -> impl Future<Output = Result<Vec<EngineInfo>, VaultError>> + Send {
             async move { Ok(self.engines.clone()) }
         }
 
@@ -4527,7 +4575,7 @@ mod tests {
         let generation = app.store.bump_generation();
         app.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::leaf("secret"), SecretEntry::leaf("prod")],
+            entries: vec![engine("secret"), engine("prod")],
         });
         app.engines_selected = 1;
 
@@ -4539,10 +4587,7 @@ mod tests {
 
         // Then: only matching engines remain and selection resets to zero.
         assert_eq!(app.engines_selected, 0);
-        assert_eq!(
-            app.engines_model().engines,
-            vec![SecretEntry::leaf("secret")]
-        );
+        assert_eq!(app.engines_model().engines, vec![engine("secret")]);
     }
 
     #[test]
@@ -4567,7 +4612,7 @@ mod tests {
         let generation = app.store.bump_generation();
         app.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::leaf("secret"), SecretEntry::leaf("prod")],
+            entries: vec![engine("secret"), engine("prod")],
         });
         app.handle_input(key(KeyCode::Char('/')));
         app.handle_input(key(KeyCode::Char('s')));
@@ -4593,7 +4638,7 @@ mod tests {
 
         app.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::leaf("secret")],
+            entries: vec![engine("secret")],
         });
         app.apply(Msg::HealthLoaded {
             generation,
@@ -4603,10 +4648,7 @@ mod tests {
             },
         });
 
-        assert_eq!(
-            app.engines_model().engines,
-            vec![SecretEntry::leaf("secret")]
-        );
+        assert_eq!(app.engines_model().engines, vec![engine("secret")]);
         assert_eq!(app.header_model().vault_version, "1.18.0");
         assert_eq!(app.header_model().sealed, Some(false));
     }
@@ -4617,7 +4659,7 @@ mod tests {
         let generation = app.store.bump_generation();
         app.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::leaf("secret")],
+            entries: vec![engine("secret")],
         });
 
         let quit = app.handle_input(key(KeyCode::Enter));
@@ -4628,12 +4670,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn engines_enter_when_non_kv2_engine_selected_warns_without_navigating() {
+        // Given: a `cubbyhole` engine (not KV2) is selected.
+        let (mut app, _rx, _vault) = test_app();
+        let generation = app.store.bump_generation();
+        app.apply(Msg::EnginesLoaded {
+            generation,
+            entries: vec![engine_typed("cubbyhole", "cubbyhole", None)],
+        });
+
+        // When: Enter is pressed on it.
+        let quit = app.handle_input(key(KeyCode::Enter));
+
+        // Then: the app stays in the engines view and explains why.
+        assert!(!quit);
+        assert_eq!(app.state, AppState::Main(Mode::Engines));
+        assert_eq!(
+            app.status.as_ref().map(|status| status.text.as_str()),
+            Some("'cubbyhole' is a 'cubbyhole' engine; only KV2 engines can be browsed")
+        );
+    }
+
+    #[tokio::test]
+    async fn engines_enter_when_kv1_engine_selected_warns_without_navigating() {
+        // Given: a KV v1 engine is selected.
+        let (mut app, _rx, _vault) = test_app();
+        let generation = app.store.bump_generation();
+        app.apply(Msg::EnginesLoaded {
+            generation,
+            entries: vec![engine_typed("legacy", "kv", Some(1))],
+        });
+
+        // When: Enter is pressed on it.
+        app.handle_input(key(KeyCode::Enter));
+
+        // Then: the app stays put with a KV1-specific reason.
+        assert_eq!(app.state, AppState::Main(Mode::Engines));
+        assert_eq!(
+            app.status.as_ref().map(|status| status.text.as_str()),
+            Some("'legacy' is a kv v1 mount; only KV2 engines can be browsed")
+        );
+    }
+
+    #[tokio::test]
+    async fn engines_enter_when_unversioned_kv_engine_selected_warns_without_navigating() {
+        // Given: `vault secrets enable kv` without `-version` — a `kv` mount whose
+        // `options` are null, which the server treats as KV1. Browsing it with KV2
+        // endpoints is exactly the 404 this change exists to prevent.
+        let (mut app, _rx, _vault) = test_app();
+        let generation = app.store.bump_generation();
+        app.apply(Msg::EnginesLoaded {
+            generation,
+            entries: vec![engine_typed("unversioned", "kv", None)],
+        });
+
+        // When: Enter is pressed on it.
+        let quit = app.handle_input(key(KeyCode::Enter));
+
+        // Then: it does not navigate, and says why.
+        assert!(!quit);
+        assert_eq!(app.state, AppState::Main(Mode::Engines));
+        assert_eq!(
+            app.status.as_ref().map(|status| status.text.as_str()),
+            Some("'unversioned' is a kv v1 mount; only KV2 engines can be browsed")
+        );
+    }
+
+    #[tokio::test]
     async fn secrets_enter_when_dir_then_leaf_drills_and_opens_data() {
         let (mut app, _rx, _vault) = test_app();
         let generation = app.store.bump_generation();
         app.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::leaf("secret")],
+            entries: vec![engine("secret")],
         });
         app.handle_input(key(KeyCode::Enter));
         let listing_generation = app.store.bump_generation();
@@ -4777,9 +4886,10 @@ mod tests {
         let generation = app.store.bump_generation();
         app.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::leaf("secret"), SecretEntry::leaf("kv")],
+            entries: vec![engine("secret"), engine("kv")],
         });
-        let backend = TestBackend::new(80, 14);
+        // Tall enough for the engines list plus the selected-engine detail block.
+        let backend = TestBackend::new(80, 18);
         let mut terminal = Terminal::new(backend).expect("terminal");
 
         terminal

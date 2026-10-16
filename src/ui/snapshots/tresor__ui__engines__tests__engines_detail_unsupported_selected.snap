@@ -1,0 +1,16 @@
+---
+source: src/ui/engines.rs
+expression: "render(60, 12, |f|\ndraw_engines(f, Rect::new(0, 0, 60, 12), &model, &Theme::default()))"
+---
+┌[Secret Engines]──────────────────────────────────────────┐
+│▌ cubbyhole                                      cubbyhole│
+│                                                          │
+│                                                          │
+│                                                          │
+│┌ cubbyhole ─────────────────────────────────────────────┐│
+││type: cubbyhole | version: n/a | accessor: cubbyhole_acc││
+││lease ttl: default 0s | max 0s                          ││
+││description: n/a                                        ││
+││browsing unsupported: only KV2 engines can be browsed   ││
+│└────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────┘

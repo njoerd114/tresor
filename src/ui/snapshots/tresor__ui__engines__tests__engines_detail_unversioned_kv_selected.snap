@@ -1,0 +1,16 @@
+---
+source: src/ui/engines.rs
+expression: "render(60, 12, |f|\ndraw_engines(f, Rect::new(0, 0, 60, 12), &model, &Theme::default()))"
+---
+┌[Secret Engines]──────────────────────────────────────────┐
+│▌ legacykv                                           kv v1│
+│                                                          │
+│                                                          │
+│                                                          │
+│┌ legacykv ──────────────────────────────────────────────┐│
+││type: kv v1 | version: n/a | accessor: kv_accessor      ││
+││lease ttl: default 0s | max 0s                          ││
+││description: n/a                                        ││
+││browsing unsupported: KV v1 mounts cannot be browsed    ││
+│└────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────┘

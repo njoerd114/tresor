@@ -11,8 +11,8 @@ use serde_json::Value;
 
 pub use self::client::VaultClient;
 use crate::model::{
-    HealthInfo, KvData, KvVersionHistory, MintedToken, PolicyDocument, PolicyEntry, SecretEntry,
-    TokenCreateRequest, TokenInfo, WrappedToken,
+    EngineInfo, HealthInfo, KvData, KvVersionHistory, MintedToken, PolicyDocument, PolicyEntry,
+    SecretEntry, TokenCreateRequest, TokenInfo, WrappedToken,
 };
 use crate::path::SecretPath;
 
@@ -78,10 +78,10 @@ impl VaultError {
 
 /// Vault API boundary with parity to the Go `VaultSvc` interface.
 pub trait VaultApi: Send + Sync {
-    /// Reads mounted secret engines.
+    /// Reads mounted secret engines with their type/metadata.
     fn read_secret_engines(
         &self,
-    ) -> impl Future<Output = Result<Vec<SecretEntry>, VaultError>> + Send;
+    ) -> impl Future<Output = Result<Vec<EngineInfo>, VaultError>> + Send;
 
     /// Lists KV2 child paths under `path` inside `mount`.
     fn list_kv_secrets(

@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use crate::model::{
-    HealthInfo, KvData, KvVersionHistory, MintedToken, PolicyDocument, PolicyEntry, SecretEntry,
-    TokenInfo, WrappedToken,
+    EngineInfo, HealthInfo, KvData, KvVersionHistory, MintedToken, PolicyDocument, PolicyEntry,
+    SecretEntry, TokenInfo, WrappedToken,
 };
 use crate::path::SecretPath;
 
@@ -33,7 +33,7 @@ pub enum Msg {
         /// Generation stamped when the background task was spawned.
         generation: u64,
         /// Loaded engine entries.
-        entries: Vec<SecretEntry>,
+        entries: Vec<EngineInfo>,
     },
     /// A secret listing was loaded.
     SecretsLoaded {
@@ -255,7 +255,7 @@ pub enum Msg {
 #[derive(Debug, Default, Clone)]
 pub struct Store {
     /// Cached secret engines.
-    pub engines: Vec<SecretEntry>,
+    pub engines: Vec<EngineInfo>,
     /// Cached ACL policy list.
     pub policies: Vec<PolicyEntry>,
     secrets: HashMap<CacheKey, Vec<SecretEntry>>,
@@ -347,7 +347,7 @@ impl Store {
 
     /// Returns the cached secret engines.
     #[must_use]
-    pub fn engines(&self) -> &[SecretEntry] {
+    pub fn engines(&self) -> &[EngineInfo] {
         &self.engines
     }
 
@@ -423,13 +423,25 @@ mod tests {
     use proptest::prelude::*;
 
     use super::{CacheKey, Msg, Store};
-    use crate::model::{KvData, KvMetadata, KvVersionHistory, SecretEntry};
+    use crate::model::{EngineInfo, KvData, KvMetadata, KvVersionHistory, SecretEntry};
     use crate::path::SecretPath;
 
     fn key(path: &str) -> CacheKey {
         CacheKey {
             mount: SecretPath::new("secret/"),
             path: SecretPath::new(path),
+        }
+    }
+
+    fn engine(name: &str) -> EngineInfo {
+        EngineInfo {
+            name: SecretPath::new(name),
+            mount_type: "kv".to_owned(),
+            kv_version: Some(2),
+            accessor: String::new(),
+            description: String::new(),
+            default_lease_ttl: 0,
+            max_lease_ttl: 0,
         }
     }
 
@@ -448,16 +460,16 @@ mod tests {
 
         let stale = store.apply(Msg::EnginesLoaded {
             generation: current - 1,
-            entries: vec![SecretEntry::dir("kv/")],
+            entries: vec![engine("kv")],
         });
         let accepted = store.apply(Msg::EnginesLoaded {
             generation: current,
-            entries: vec![SecretEntry::dir("secret/")],
+            entries: vec![engine("secret")],
         });
 
         assert!(!stale);
         assert!(accepted);
-        assert_eq!(store.engines(), &[SecretEntry::dir("secret/")]);
+        assert_eq!(store.engines(), &[engine("secret")]);
     }
 
     #[test]
@@ -516,7 +528,7 @@ mod tests {
         );
         assert!(store.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::dir("secret/")],
+            entries: vec![engine("secret")],
         }));
 
         store.clear_cached_data_preserving_generation();
@@ -569,14 +581,14 @@ mod tests {
 
         assert!(store.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::dir("old/")],
+            entries: vec![engine("old")],
         }));
         assert!(store.apply(Msg::EnginesLoaded {
             generation,
-            entries: vec![SecretEntry::dir("new/")],
+            entries: vec![engine("new")],
         }));
 
-        assert_eq!(store.engines(), &[SecretEntry::dir("new/")]);
+        assert_eq!(store.engines(), &[engine("new")]);
     }
 
     #[test]

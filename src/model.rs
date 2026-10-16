@@ -60,6 +60,97 @@ impl SecretEntry {
     }
 }
 
+/// A mounted secret engine together with the metadata needed to browse it safely.
+///
+/// Vault reports every mount — KV2, KV1, `cubbyhole`, `transit`, PKI, `system`, … —
+/// in one list, and only KV2 mounts can be browsed with the KV2 endpoints this app
+/// speaks. Keeping the type and version here lets the engines view mark the rest as
+/// unsupported instead of letting them fail with a confusing 404.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineInfo {
+    /// Mount path with the trailing slash stripped (e.g. `secret`).
+    pub name: SecretPath,
+    /// Engine type exactly as Vault reports it (`kv`, `cubbyhole`, `transit`, `system`, …).
+    pub mount_type: String,
+    /// KV engine version when Vault reports one (`Some(2)` for KV2, `Some(1)` for
+    /// KV1). `None` for a `kv` mount created without an explicit version — which
+    /// the KV backend treats as KV1.
+    pub kv_version: Option<u64>,
+    /// Opaque engine accessor (safe to display).
+    pub accessor: String,
+    /// Human-readable mount description (often empty).
+    pub description: String,
+    /// Default lease TTL in seconds (`0` when the server reports none).
+    pub default_lease_ttl: u64,
+    /// Maximum lease TTL in seconds (`0` when the server reports none).
+    pub max_lease_ttl: u64,
+}
+
+impl EngineInfo {
+    /// True for a `kv` mount (either version).
+    #[must_use]
+    pub fn is_kv(&self) -> bool {
+        self.mount_type == "kv"
+    }
+
+    /// True for a `kv` mount that must be treated as KV1 — an explicit version
+    /// `1`, or no version reported at all.
+    ///
+    /// The KV backend defaults to version 1, so a `kv` mount created without an
+    /// explicit version reports **no** `options.version` (`null`) while its type
+    /// is still `kv`. Verified on Vault 2.1.2 and `OpenBao` 2.0: such a mount
+    /// rejects the KV2 `metadata` endpoint but accepts KV1 reads. Any version
+    /// other than `2` is treated as KV1 as well — the rule fails closed.
+    #[must_use]
+    pub fn is_kv1(&self) -> bool {
+        self.is_kv() && self.kv_version != Some(2)
+    }
+
+    /// True when the engine can be browsed with the KV2 endpoints.
+    ///
+    /// Fails closed: only an explicit version `2` is browsable. Treating an
+    /// unreported version as KV2 would send `{mount}/metadata/...` requests to a
+    /// KV1 mount and produce exactly the confusing 404 this type exists to avoid.
+    #[must_use]
+    pub fn supports_browsing(&self) -> bool {
+        self.is_kv() && self.kv_version == Some(2)
+    }
+
+    /// Short display label for the engine type, e.g. `kv v2`, `cubbyhole`, `system`.
+    #[must_use]
+    pub fn type_label(&self) -> String {
+        if !self.is_kv() {
+            return self.mount_type.clone();
+        }
+        match self.kv_version {
+            // An unreported version is a KV1 mount (see `is_kv1`).
+            None | Some(1) => "kv v1".to_owned(),
+            Some(2) => "kv v2".to_owned(),
+            Some(other) => format!("kv v{other}"),
+        }
+    }
+
+    /// One-line reason this engine cannot be browsed, or `None` when it can.
+    #[must_use]
+    pub fn unsupported_reason(&self) -> Option<String> {
+        if self.supports_browsing() {
+            return None;
+        }
+        if self.is_kv() {
+            return Some(format!(
+                "'{}' is a {} mount; only KV2 engines can be browsed",
+                self.name.as_str(),
+                self.type_label()
+            ));
+        }
+        Some(format!(
+            "'{}' is a '{}' engine; only KV2 engines can be browsed",
+            self.name.as_str(),
+            self.mount_type
+        ))
+    }
+}
+
 /// A KV2 secret: its key/value data plus version metadata.
 #[derive(Debug, Clone)]
 pub struct KvData {
@@ -223,5 +314,65 @@ mod tests {
         assert!(d.is_dir);
         let l = SecretEntry::leaf("creds");
         assert!(!l.is_dir);
+    }
+
+    fn engine(name: &str, mount_type: &str, version: Option<u64>) -> EngineInfo {
+        EngineInfo {
+            name: SecretPath::new(name),
+            mount_type: mount_type.to_owned(),
+            kv_version: version,
+            accessor: format!("{mount_type}_accessor"),
+            description: String::new(),
+            default_lease_ttl: 0,
+            max_lease_ttl: 0,
+        }
+    }
+
+    #[test]
+    fn kv2_engine_is_browsable_with_version_label() {
+        let kv2 = engine("secret", "kv", Some(2));
+        assert!(kv2.is_kv());
+        assert!(!kv2.is_kv1());
+        assert!(kv2.supports_browsing());
+        assert_eq!(kv2.type_label(), "kv v2");
+        assert_eq!(kv2.unsupported_reason(), None);
+    }
+
+    #[test]
+    fn kv_engine_without_reported_version_is_kv1_and_not_browsable() {
+        // Vault/OpenBao report no `options.version` for a `kv` mount created
+        // without an explicit version, and such a mount is KV1.
+        let unversioned = engine("secret", "kv", None);
+        assert!(unversioned.is_kv());
+        assert!(unversioned.is_kv1());
+        assert!(!unversioned.supports_browsing());
+        assert_eq!(unversioned.type_label(), "kv v1");
+        assert_eq!(
+            unversioned.unsupported_reason().as_deref(),
+            Some("'secret' is a kv v1 mount; only KV2 engines can be browsed")
+        );
+    }
+
+    #[test]
+    fn kv1_engine_is_unsupported_with_a_v1_reason() {
+        let kv1 = engine("legacy", "kv", Some(1));
+        assert!(kv1.is_kv1());
+        assert!(!kv1.supports_browsing());
+        assert_eq!(kv1.type_label(), "kv v1");
+        assert_eq!(
+            kv1.unsupported_reason().as_deref(),
+            Some("'legacy' is a kv v1 mount; only KV2 engines can be browsed")
+        );
+    }
+
+    #[test]
+    fn non_kv_engine_is_unsupported_and_keeps_its_type_label() {
+        let cubbyhole = engine("cubbyhole", "cubbyhole", None);
+        assert!(!cubbyhole.supports_browsing());
+        assert_eq!(cubbyhole.type_label(), "cubbyhole");
+        assert_eq!(
+            cubbyhole.unsupported_reason().as_deref(),
+            Some("'cubbyhole' is a 'cubbyhole' engine; only KV2 engines can be browsed")
+        );
     }
 }

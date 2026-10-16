@@ -403,13 +403,27 @@ async fn run_check(config: Config) -> Result<()> {
     };
 
     for engine in &engines {
+        // Only KV2 mounts can be browsed; report the rest instead of probing.
+        if !engine.supports_browsing() {
+            println!(
+                "  {} ({}): not browsable (only KV2 engines are)",
+                engine.name,
+                engine.type_label()
+            );
+            continue;
+        }
         match vault
             .list_kv_secrets(&engine.name, &SecretPath::root())
             .await
         {
-            Ok(entries) => println!("  list {}: OK ({} keys)", engine.name, entries.len()),
+            Ok(entries) => println!(
+                "  list {} ({}): OK ({} keys)",
+                engine.name,
+                engine.type_label(),
+                entries.len()
+            ),
             Err(tresor::vault::VaultError::Api { status: 404, .. }) => {
-                println!("  list {}: not KV2 (skipped)", engine.name);
+                println!("  list {}: empty or unavailable (skipped)", engine.name);
             }
             Err(err) => return check_error(&format!("list {}", engine.name), &err),
         }

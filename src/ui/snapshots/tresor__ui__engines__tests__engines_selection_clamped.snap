@@ -3,10 +3,10 @@ source: src/ui/engines.rs
 expression: "render(32, 8, |f|\ndraw_engines(f, Rect::new(0, 0, 32, 8), &model, &Theme::default()))"
 ---
 ┌[Secret Engines]──────────────┐
-│  secret                      │
-│  kv                          │
-│  team                        │
-│  infra                       │
-│▌ apps                        │
+│  secret                 kv v2│
+│  kv                     kv v2│
+│  team                   kv v2│
+│  infra                  kv v2│
+│▌ apps                   kv v2│
 │                              │
 └──────────────────────────────┘

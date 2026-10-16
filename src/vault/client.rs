@@ -13,8 +13,8 @@ use vaultrs::error::ClientError;
 use super::{VaultApi, VaultError, encode_acl_policy_name};
 use crate::constants::NA_VALUE;
 use crate::model::{
-    HealthInfo, KvData, KvMetadata, KvVersionHistory, MintedToken, PolicyDocument, PolicyEntry,
-    SecretEntry, TokenCreateRequest, TokenInfo, VersionMeta, WrappedToken,
+    EngineInfo, HealthInfo, KvData, KvMetadata, KvVersionHistory, MintedToken, PolicyDocument,
+    PolicyEntry, SecretEntry, TokenCreateRequest, TokenInfo, VersionMeta, WrappedToken,
 };
 use crate::path::SecretPath;
 
@@ -166,15 +166,31 @@ impl VaultClient {
 impl VaultApi for VaultClient {
     fn read_secret_engines(
         &self,
-    ) -> impl std::future::Future<Output = Result<Vec<SecretEntry>, VaultError>> + Send {
+    ) -> impl std::future::Future<Output = Result<Vec<EngineInfo>, VaultError>> + Send {
         async move {
             let mounts =
                 Self::with_timeout(vaultrs::sys::mount::list(&self.inner), "sys/mounts").await;
             match mounts {
                 Ok(mounts) => {
+                    // `vaultrs` decodes the whole mount record, so the type, KV
+                    // version (`options.version`), accessor and lease TTLs come
+                    // along for free — the engines view needs them to tell KV2
+                    // apart from `cubbyhole`/`transit`/`sys`.
                     let mut entries = mounts
-                        .keys()
-                        .map(|name| SecretEntry::leaf(strip_trailing_slash(name)))
+                        .into_iter()
+                        .map(|(name, mount)| EngineInfo {
+                            name: SecretPath::new(strip_trailing_slash(&name)),
+                            mount_type: mount.mount_type,
+                            kv_version: mount
+                                .options
+                                .as_ref()
+                                .and_then(|options| options.get("version"))
+                                .and_then(|version| version.parse::<u64>().ok()),
+                            accessor: mount.accessor,
+                            description: mount.description,
+                            default_lease_ttl: mount.config.default_lease_ttl,
+                            max_lease_ttl: mount.config.max_lease_ttl,
+                        })
                         .collect::<Vec<_>>();
                     entries.sort_by(|left, right| left.name.cmp(&right.name));
                     Ok(entries)
