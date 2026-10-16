@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/njoerd114/tresor/compare/v0.5.1...v0.6.0) (2026-10-16)
+
+
+### Features
+
+* **engines:** mount details + KV2-awareness (stop assuming every engine is KV2) ([#53](https://github.com/njoerd114/tresor/issues/53)) ([3b56983](https://github.com/njoerd114/tresor/commit/3b56983a6db53b680edbe9a2e4c1b69359afa540))
+
+
+### Bug Fixes
+
+* **palette:** make ':' open a single working command surface ([#51](https://github.com/njoerd114/tresor/issues/51)) ([79f1f8b](https://github.com/njoerd114/tresor/commit/79f1f8bf255bf015b62b39c7720571c1f03dc580))
+
 ## [0.5.1](https://github.com/njoerd114/tresor/compare/v0.5.0...v0.5.1) (2026-10-15)
 
 
