@@ -3,28 +3,28 @@
 class Tresor < Formula
   desc "k9s-style terminal UI for HashiCorp Vault and OpenBao"
   homepage "https://github.com/njoerd114/tresor"
-  version "0.5.1"
+  version "0.6.0"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/njoerd114/tresor/releases/download/v0.5.1/tresor-aarch64-apple-darwin.tar.gz"
-      sha256 "4a9a54daf9ed3d3d1a32a04917fc74a9e0c6e79df1603b057a9c3a98ce1e6694"
+      url "https://github.com/njoerd114/tresor/releases/download/v0.6.0/tresor-aarch64-apple-darwin.tar.gz"
+      sha256 "8e7c9a5c37371200305b8640ac283a4755f7d02fb69ec6a1552e7756de969ef9"
     end
     on_intel do
-      url "https://github.com/njoerd114/tresor/releases/download/v0.5.1/tresor-x86_64-apple-darwin.tar.gz"
-      sha256 "81f8bccadb6b9382a65216d65efceb9fd97aaeb654d1b5c88260769065b85ebe"
+      url "https://github.com/njoerd114/tresor/releases/download/v0.6.0/tresor-x86_64-apple-darwin.tar.gz"
+      sha256 "42bba4ffce36f3f9da79cfe46cc72ebe28883fc5eeb85eef09515cb86852110f"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/njoerd114/tresor/releases/download/v0.5.1/tresor-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "2e9b9d719bcd0c88dcdb790f53372188af7f2f8882c82cc2c330a1e0df82ad19"
+      url "https://github.com/njoerd114/tresor/releases/download/v0.6.0/tresor-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "28a33688f7f94ceec593a04ffee1c75d49c5bbc3d0686ae204de47d8a81f2a00"
     end
     on_intel do
-      url "https://github.com/njoerd114/tresor/releases/download/v0.5.1/tresor-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "1a2e95c0b84ce1be01cc1462e39ae0b8ba0ea62d3c8953b9af896d39e0351f63"
+      url "https://github.com/njoerd114/tresor/releases/download/v0.6.0/tresor-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "2c331fbe72f2f2f0d84a9c8a0f1c3f08cd295f6e912ffc34019e8828b0d8a5b4"
     end
   end
 
