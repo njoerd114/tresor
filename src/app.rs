@@ -640,42 +640,8 @@ impl<V: VaultApi + 'static> App<V> {
 
     /// Handles one terminal key event, returning true when the app should quit.
     pub fn handle_input(&mut self, key: KeyEvent) -> bool {
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-            return true;
-        }
-        if self.prompt.is_some() {
-            return self.handle_prompt_input(key);
-        }
-        if self.overlay.is_some() {
-            return self.handle_overlay_input(key);
-        }
-        if self.filter.as_ref().is_some_and(|state| state.editing) {
-            return self.handle_filter_input(key);
-        }
-        if key.code == KeyCode::Esc
-            && !self.inside_secret_editor()
-            && self
-                .filter
-                .as_ref()
-                .is_some_and(|state| state.scope == self.current_filter_scope())
-        {
-            self.filter = None;
-            return false;
-        }
-        if matches!(self.state, AppState::Main(_)) && !self.inside_secret_editor() {
-            if key.code == KeyCode::Char(':') {
-                self.open_command_palette();
-                return false;
-            }
-            if key.code == KeyCode::Char('/')
-                && matches!(
-                    self.state,
-                    AppState::Main(Mode::Engines | Mode::Secrets | Mode::SecretData)
-                )
-            {
-                self.open_filter();
-                return false;
-            }
+        if let Some(handled) = self.route_pre_mode_input(key) {
+            return handled;
         }
         match self.state {
             AppState::ConfigInput => self.handle_config_input(key),
@@ -687,6 +653,51 @@ impl<V: VaultApi + 'static> App<V> {
             AppState::Main(Mode::Versions) => self.handle_versions_input(key),
             AppState::Main(Mode::Token) => self.handle_token_input(key),
         }
+    }
+
+    /// Routes input that must be handled before the per-mode handler runs:
+    /// global quit, prompt/overlay/filter capture, Esc to clear a filter, and
+    /// the Main-mode `:` / `/` openers. Returns `Some(quit?)` when the key was
+    /// consumed (the caller must return that value), `None` to fall through.
+    fn route_pre_mode_input(&mut self, key: KeyEvent) -> Option<bool> {
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            return Some(true);
+        }
+        if self.prompt.is_some() {
+            return Some(self.handle_prompt_input(key));
+        }
+        if self.overlay.is_some() {
+            return Some(self.handle_overlay_input(key));
+        }
+        if self.filter.as_ref().is_some_and(|state| state.editing) {
+            return Some(self.handle_filter_input(key));
+        }
+        if key.code == KeyCode::Esc
+            && !self.inside_secret_editor()
+            && self
+                .filter
+                .as_ref()
+                .is_some_and(|state| state.scope == self.current_filter_scope())
+        {
+            self.filter = None;
+            return Some(false);
+        }
+        if matches!(self.state, AppState::Main(_)) && !self.inside_secret_editor() {
+            if key.code == KeyCode::Char(':') {
+                self.open_command_palette();
+                return Some(false);
+            }
+            if key.code == KeyCode::Char('/')
+                && matches!(
+                    self.state,
+                    AppState::Main(Mode::Engines | Mode::Secrets | Mode::SecretData)
+                )
+            {
+                self.open_filter();
+                return Some(false);
+            }
+        }
+        None
     }
 
     fn handle_overlay_input(&mut self, key: KeyEvent) -> bool {
@@ -1074,7 +1085,15 @@ impl<V: VaultApi + 'static> App<V> {
         if !is_current {
             return;
         }
-        match &msg {
+        self.dispatch_message_effects(&msg);
+        self.fold_into_store(msg);
+    }
+
+    /// Runs the per-message UI side effects: status lines, mode transitions,
+    /// and follow-up reloads. Does NOT fold into the store — `fold_into_store`
+    /// does that after a successful generation check.
+    fn dispatch_message_effects(&mut self, msg: &Msg) {
+        match msg {
             Msg::HealthLoaded { info, .. } => self.apply_health(info),
             Msg::TokenLoaded { info, .. } => self.apply_token(info),
             Msg::SecretLoaded { key, data, .. } => self.open_secret_data(key, data.clone()),
@@ -1109,6 +1128,82 @@ impl<V: VaultApi + 'static> App<V> {
                 );
                 self.spawn_load_secrets(self.current_secrets_key());
             }
+            Msg::VersionsLoaded { .. }
+            | Msg::SecretVersionLoaded { .. }
+            | Msg::SecretVersionDeleted { .. }
+            | Msg::SecretVersionUndeleted { .. }
+            | Msg::SecretVersionDestroyed { .. }
+            | Msg::SecretVersionRestored { .. } => self.apply_version_event(msg),
+            Msg::Capabilities { .. }
+            | Msg::EnginesLoaded { .. }
+            | Msg::SecretsLoaded { .. }
+            | Msg::HardRefreshed { .. }
+            | Msg::TokenRenewed { .. }
+            | Msg::TokenMinted { .. }
+            | Msg::DataWrapped { .. }
+            | Msg::DataUnwrapped { .. }
+            | Msg::TokenCapabilities { .. }
+            | Msg::PoliciesLoaded { .. }
+            | Msg::PolicyLoaded { .. }
+            | Msg::PolicyWritten { .. }
+            | Msg::PolicyCapabilities { .. } => {}
+        }
+    }
+
+    /// Folds a message into the store cache and applies derived capability /
+    /// policy effects on a successful fold. Called after `dispatch_message_effects`
+    /// so per-message side effects observe the same store state.
+    fn fold_into_store(&mut self, mut msg: Msg) {
+        let policy_effect = policy_effect(&msg);
+        let capability_update = match &msg {
+            Msg::Capabilities {
+                create,
+                update,
+                soft_delete,
+                metadata_delete,
+                destroy,
+                undelete,
+                ..
+            } => Some((
+                *create,
+                *update,
+                *soft_delete,
+                *metadata_delete,
+                *destroy,
+                *undelete,
+            )),
+            _ => None,
+        };
+        if let Msg::SecretsLoaded { entries, .. } = &mut msg {
+            sort_entries(entries);
+        }
+        let accepted = self.store.apply(msg);
+        if !accepted {
+            return;
+        }
+        if let Some((create, update, soft_delete, metadata_delete, destroy, undelete)) =
+            capability_update
+        {
+            self.can_create = create;
+            self.can_update = update;
+            self.can_soft_delete = soft_delete;
+            self.can_metadata_delete = metadata_delete;
+            self.can_destroy = destroy;
+            self.can_undelete = undelete;
+            self.can_write = create || update;
+            self.can_delete = metadata_delete;
+        }
+        if let Some(effect) = policy_effect {
+            self.apply_policy_effect(effect);
+        }
+    }
+
+    /// Dispatches a KV2 version-history message to its side-effect handler.
+    /// Mirrors `apply_token_event`: the version-history flow is a discrete
+    /// subsystem, so its handlers live together here rather than in the
+    /// central `apply` dispatch.
+    fn apply_version_event(&mut self, msg: &Msg) {
+        match msg {
             Msg::VersionsLoaded { key, history, .. } => {
                 if let Some(secret) = &self.secret_data {
                     if secret.key == key.path {
@@ -1177,63 +1272,6 @@ impl<V: VaultApi + 'static> App<V> {
                 // this reload stale, so the new version would never appear.
                 self.spawn_load_versions(key.clone());
             }
-            Msg::Capabilities { .. }
-            | Msg::EnginesLoaded { .. }
-            | Msg::SecretsLoaded { .. }
-            | Msg::HardRefreshed { .. }
-            | Msg::TokenRenewed { .. }
-            | Msg::TokenMinted { .. }
-            | Msg::DataWrapped { .. }
-            | Msg::DataUnwrapped { .. }
-            | Msg::TokenCapabilities { .. }
-            | Msg::PoliciesLoaded { .. }
-            | Msg::PolicyLoaded { .. }
-            | Msg::PolicyWritten { .. }
-            | Msg::PolicyCapabilities { .. } => {}
-        }
-
-        let policy_effect = policy_effect(&msg);
-        let mut cache_msg = msg;
-        let capability_update = match &cache_msg {
-            Msg::Capabilities {
-                create,
-                update,
-                soft_delete,
-                metadata_delete,
-                destroy,
-                undelete,
-                ..
-            } => Some((
-                *create,
-                *update,
-                *soft_delete,
-                *metadata_delete,
-                *destroy,
-                *undelete,
-            )),
-            _ => None,
-        };
-        if let Msg::SecretsLoaded { entries, .. } = &mut cache_msg {
-            sort_entries(entries);
-        }
-        let accepted = self.store.apply(cache_msg);
-        if !accepted {
-            return;
-        }
-        if let Some((create, update, soft_delete, metadata_delete, destroy, undelete)) =
-            capability_update
-        {
-            self.can_create = create;
-            self.can_update = update;
-            self.can_soft_delete = soft_delete;
-            self.can_metadata_delete = metadata_delete;
-            self.can_destroy = destroy;
-            self.can_undelete = undelete;
-            self.can_write = create || update;
-            self.can_delete = metadata_delete;
-        }
-        if let Some(effect) = policy_effect {
-            self.apply_policy_effect(effect);
         }
     }
 
