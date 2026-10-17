@@ -27,7 +27,7 @@ enable_secret_mount() {
 require_command vault
 
 enable_secret_mount
-vault kv put secret/apps/web/db-creds user=alice password='p@ssw0rd' >/dev/null
+vault kv put secret/apps/web/db-creds user=alice password="$(openssl rand -hex 12)" >/dev/null
 vault kv put secret/apps/web/api-key key=xyz-123 >/dev/null
 vault kv put secret/infra/tls cert='-----BEGIN CERT-----short-----END CERT-----' key='-----BEGIN KEY-----short-----END KEY-----' >/dev/null
 vault kv put secret/creds user=tom >/dev/null
