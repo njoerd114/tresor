@@ -1272,6 +1272,11 @@ impl<V: VaultApi + 'static> App<V> {
                 // this reload stale, so the new version would never appear.
                 self.spawn_load_versions(key.clone());
             }
+            // The dispatcher only routes version events here, so any other
+            // variant is unreachable in practice; the wildcard keeps the
+            // match exhaustive (rustc rejects non-exhaustive matches even
+            // when `exhaustive_enums = "allow"` is set on clippy).
+            _ => {}
         }
     }
 
